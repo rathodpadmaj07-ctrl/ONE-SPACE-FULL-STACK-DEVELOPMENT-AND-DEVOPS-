@@ -50,6 +50,18 @@ pipeline {
                 '''
             }
         }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    docker rm -f onespace-app 2>/dev/null || true
+                    docker run -d \
+                        --name onespace-app \
+                        -p 5001:5000 \
+                        onespace:${BUILD_NUMBER}
+                '''
+            }
+        }
     }
 
     post {
