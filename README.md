@@ -30,3 +30,4 @@ Access the application in your browser at:
 - `OneSpace_Phase1/` — Core application containing Express 5 API and React Vite frontend.
 - `OneSpace_Phase1/src/` — React UI components, design tokens, and state logic.
 - `OneSpace_Phase1/server/` — Express REST API controller logic and data stores.
+
