@@ -39,12 +39,12 @@ pipeline {
             steps {
                 sh '''
                     docker rm -f onespace-ci-test 2>/dev/null || true
-                    docker run -d --name onespace-ci-test -p 5001:5000 onespace:${BUILD_NUMBER}
+                    docker run -d --name onespace-ci-test -p 5002:5000 onespace:${BUILD_NUMBER}
 
                     sleep 3
 
-                    curl --fail http://127.0.0.1:5001/api/health
-                    curl --fail http://127.0.0.1:5001/index.html
+                    curl --fail http://127.0.0.1:5002/api/health
+                    curl --fail http://127.0.0.1:5002/index.html
 
                     docker rm -f onespace-ci-test
                 '''
