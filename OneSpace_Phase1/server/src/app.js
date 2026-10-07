@@ -49,7 +49,7 @@ app.use("/api/users", usersRoutes);
 app.use("/api/notifications", notificationsRoutes);
 
 // Static frontend production build serving (Express 5 compatible)
-const distPath = path.join(__dirname, "../../dist");
+const distPath = path.join(__dirname, "../dist");
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.use((req, res, next) => {
