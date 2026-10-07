@@ -6,12 +6,6 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
         stage('Frontend Build') {
             steps {
                 dir('OneSpace_Phase1') {
@@ -21,7 +15,7 @@ pipeline {
             }
         }
 
-	stage('Backend Build') {
+        stage('Backend Build') {
             steps {
                 dir('OneSpace_Phase1/server') {
                     sh 'npm ci'
@@ -29,6 +23,7 @@ pipeline {
                 }
             }
         }
+
         stage('Docker Build') {
             steps {
                 sh 'docker build -t onespace:${BUILD_NUMBER} .'
@@ -39,7 +34,10 @@ pipeline {
             steps {
                 sh '''
                     docker rm -f onespace-ci-test 2>/dev/null || true
-                    docker run -d --name onespace-ci-test -p 5002:5000 onespace:${BUILD_NUMBER}
+                    docker run -d \
+                        --name onespace-ci-test \
+                        -p 5002:5000 \
+                        onespace:${BUILD_NUMBER}
 
                     sleep 3
 
@@ -59,6 +57,17 @@ pipeline {
                         --name onespace-app \
                         -p 5001:5000 \
                         onespace:${BUILD_NUMBER}
+                '''
+            }
+        }
+
+        stage('Post-Deploy Verification') {
+            steps {
+                sh '''
+                    sleep 3
+
+                    curl --fail http://127.0.0.1:5001/api/health
+                    curl --fail http://127.0.0.1:5001/index.html
                 '''
             }
         }
