@@ -21,14 +21,14 @@ pipeline {
             }
         }
 
-        stage('Backend Build') {
+	stage('Backend Build') {
             steps {
                 dir('OneSpace_Phase1/server') {
                     sh 'npm ci'
+                    sh 'npm test'
                 }
             }
         }
-
         stage('Docker Build') {
             steps {
                 sh 'docker build -t onespace:${BUILD_NUMBER} .'
