@@ -40,42 +40,107 @@ pipeline {
         stage('Docker Health Test') {
             steps {
                 sh '''
+                    set -eu
+
                     docker rm -f onespace-ci-test 2>/dev/null || true
+
                     docker run -d \
                         --name onespace-ci-test \
                         -p 5002:5000 \
                         onespace:${BUILD_NUMBER}
 
-                    sleep 3
+                    sleep 5
 
-                    curl --fail http://127.0.0.1:5002/api/health
-                    curl --fail http://127.0.0.1:5002/index.html
+                    curl --fail --silent --show-error \
+                        http://127.0.0.1:5002/api/health
+
+                    curl --fail --silent --show-error \
+                        http://127.0.0.1:5002/index.html
 
                     docker rm -f onespace-ci-test
                 '''
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy with Automatic Rollback') {
             steps {
-                sh '''
-                    docker rm -f onespace-app 2>/dev/null || true
-                    docker run -d \
-                        --name onespace-app \
-                        -p 5001:5000 \
-                        onespace:${BUILD_NUMBER}
-                '''
-            }
-        }
+                script {
+                    // Remember the image currently deployed.
+                    def previousImage = sh(
+                        script: '''
+                            docker inspect \
+                                --format='{{.Config.Image}}' \
+                                onespace-app 2>/dev/null || true
+                        ''',
+                        returnStdout: true
+                    ).trim()
 
-        stage('Post-Deploy Verification') {
-            steps {
-                sh '''
-                    sleep 3
+                    echo "Previous image: ${
+                        previousImage ? previousImage : 'none'
+                    }"
 
-                    curl --fail http://127.0.0.1:5001/api/health
-                    curl --fail http://127.0.0.1:5001/index.html
-                '''
+                    try {
+                        sh '''
+                            set -eu
+
+                            docker rm -f onespace-app 2>/dev/null || true
+
+                            docker run -d \
+                                --name onespace-app \
+                                --restart unless-stopped \
+                                -p 5001:5000 \
+                                onespace:${BUILD_NUMBER}
+
+                            sleep 5
+
+                            curl --fail --silent --show-error \
+                                http://127.0.0.1:5001/api/health
+
+                            curl --fail --silent --show-error \
+                                http://127.0.0.1:5001/index.html
+                        '''
+
+                        echo "Deployment and health checks succeeded."
+                    } catch (err) {
+                        echo "Deployment failed. Starting rollback."
+
+                        // Remove the failed deployment.
+                        sh 'docker rm -f onespace-app 2>/dev/null || true'
+
+                        if (previousImage) {
+                            try {
+                                sh """
+                                    set -eu
+
+                                    docker run -d \
+                                        --name onespace-app \
+                                        --restart unless-stopped \
+                                        -p 5001:5000 \
+                                        '${previousImage}'
+
+                                    sleep 5
+
+                                    curl --fail --silent --show-error \
+                                        http://127.0.0.1:5001/api/health
+
+                                    curl --fail --silent --show-error \
+                                        http://127.0.0.1:5001/index.html
+                                """
+
+                                echo "Rollback succeeded: ${previousImage}"
+                            } catch (rollbackError) {
+                                echo "Rollback also failed. Check Docker logs."
+                                sh 'docker logs onespace-app 2>&1 || true'
+                                throw rollbackError
+                            }
+                        } else {
+                            echo "No previous container image was available."
+                        }
+
+                        // Keep the Jenkins build failed even if rollback works.
+                        throw err
+                    }
+                }
             }
         }
     }
