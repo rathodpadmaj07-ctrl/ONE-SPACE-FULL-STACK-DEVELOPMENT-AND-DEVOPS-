@@ -75,9 +75,7 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    echo "Previous image: ${
-                        previousImage ? previousImage : 'none'
-                    }"
+                    echo "Previous image: ${previousImage ? previousImage : 'none'}"
 
                     try {
                         sh '''
