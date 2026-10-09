@@ -56,16 +56,19 @@ pipeline {
 
                     curl --fail --silent --show-error \
                         http://127.0.0.1:5002/index.html
-
-                    docker rm -f onespace-ci-test
                 '''
+            }
+            post {
+                always {
+                    sh 'docker rm -f onespace-ci-test 2>/dev/null || true'
+                }
             }
         }
 
         stage('Deploy with Automatic Rollback') {
             steps {
                 script {
-                    // Remember the image currently deployed.
+                    // Capture the currently deployed image before changing anything.
                     def previousImage = sh(
                         script: '''
                             docker inspect \
@@ -75,9 +78,30 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    echo "Previous image: ${previousImage ? previousImage : 'none'}"
+                    echo "Previous image: ${previousImage ?: 'none'}"
 
                     try {
+                        // Test the new image separately before replacing production.
+                        sh '''
+                            set -eu
+
+                            docker rm -f onespace-next 2>/dev/null || true
+
+                            docker run -d \
+                                --name onespace-next \
+                                -p 5003:5000 \
+                                onespace:${BUILD_NUMBER}
+
+                            sleep 5
+
+                            curl --fail --silent --show-error \
+                                http://127.0.0.1:5003/api/health
+
+                            curl --fail --silent --show-error \
+                                http://127.0.0.1:5003/index.html
+                        '''
+
+                        // Candidate passed its checks. Switch production to the new image.
                         sh '''
                             set -eu
 
@@ -98,12 +122,15 @@ pipeline {
                                 http://127.0.0.1:5001/index.html
                         '''
 
-                        echo "Deployment and health checks succeeded."
+                        echo "Deployment and production health checks succeeded."
                     } catch (err) {
-                        echo "Deployment failed. Starting rollback."
+                        echo "Deployment failed. Attempting automatic rollback."
 
-                        // Remove the failed deployment.
-                        sh 'docker rm -f onespace-app 2>/dev/null || true'
+                        // Remove the candidate and any failed production container.
+                        sh '''
+                            docker rm -f onespace-next onespace-app \
+                                2>/dev/null || true
+                        '''
 
                         if (previousImage) {
                             try {
@@ -127,16 +154,18 @@ pipeline {
 
                                 echo "Rollback succeeded: ${previousImage}"
                             } catch (rollbackError) {
-                                echo "Rollback also failed. Check Docker logs."
+                                echo "Rollback failed. Check Docker logs."
                                 sh 'docker logs onespace-app 2>&1 || true'
                                 throw rollbackError
                             }
                         } else {
-                            echo "No previous container image was available."
+                            echo "No previous image was recorded; rollback is unavailable."
                         }
 
-                        // Keep the Jenkins build failed even if rollback works.
+                        // Keep the Jenkins build failed even if rollback succeeds.
                         throw err
+                    } finally {
+                        sh 'docker rm -f onespace-next 2>/dev/null || true'
                     }
                 }
             }
@@ -145,7 +174,10 @@ pipeline {
 
     post {
         always {
-            sh 'docker rm -f onespace-ci-test 2>/dev/null || true'
+            sh '''
+                docker rm -f onespace-ci-test 2>/dev/null || true
+                docker rm -f onespace-next 2>/dev/null || true
+            '''
         }
     }
 }
