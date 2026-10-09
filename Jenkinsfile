@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -20,6 +21,12 @@ pipeline {
                 dir('OneSpace_Phase1/server') {
                     sh 'npm ci'
                     sh 'npm test'
+                }
+            }
+            post {
+                always {
+                    junit testResults: 'OneSpace_Phase1/server/report.xml',
+                          allowEmptyResults: true
                 }
             }
         }
