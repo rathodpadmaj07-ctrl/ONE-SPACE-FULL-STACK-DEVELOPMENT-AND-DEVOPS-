@@ -1,6 +1,14 @@
-
+```groovy
 pipeline {
     agent any
+
+    parameters {
+        booleanParam(
+            name: 'SIMULATE_DEPLOY_FAILURE',
+            defaultValue: false,
+            description: 'Test automatic rollback by forcing deployment verification to fail'
+        )
+    }
 
     environment {
         PATH = "/opt/homebrew/bin:${env.PATH}"
@@ -68,7 +76,7 @@ pipeline {
         stage('Deploy with Automatic Rollback') {
             steps {
                 script {
-                    // Capture the currently deployed image before changing anything.
+                    // Record the currently deployed image.
                     def previousImage = sh(
                         script: '''
                             docker inspect \
@@ -81,7 +89,7 @@ pipeline {
                     echo "Previous image: ${previousImage ?: 'none'}"
 
                     try {
-                        // Test the new image separately before replacing production.
+                        // Verify the candidate before changing production.
                         sh '''
                             set -eu
 
@@ -101,7 +109,7 @@ pipeline {
                                 http://127.0.0.1:5003/index.html
                         '''
 
-                        // Candidate passed its checks. Switch production to the new image.
+                        // Replace the production container.
                         sh '''
                             set -eu
 
@@ -115,6 +123,12 @@ pipeline {
 
                             sleep 5
 
+                            # TEST ONLY: deliberately fail after replacement.
+                            if [ "${SIMULATE_DEPLOY_FAILURE}" = "true" ]; then
+                                echo "Simulating deployment failure for rollback test."
+                                exit 1
+                            fi
+
                             curl --fail --silent --show-error \
                                 http://127.0.0.1:5001/api/health
 
@@ -123,10 +137,11 @@ pipeline {
                         '''
 
                         echo "Deployment and production health checks succeeded."
+
                     } catch (err) {
                         echo "Deployment failed. Attempting automatic rollback."
 
-                        // Remove the candidate and any failed production container.
+                        // Remove failed production and candidate containers.
                         sh '''
                             docker rm -f onespace-next onespace-app \
                                 2>/dev/null || true
@@ -153,17 +168,21 @@ pipeline {
                                 """
 
                                 echo "Rollback succeeded: ${previousImage}"
+
                             } catch (rollbackError) {
                                 echo "Rollback failed. Check Docker logs."
                                 sh 'docker logs onespace-app 2>&1 || true'
                                 throw rollbackError
                             }
                         } else {
-                            echo "No previous image was recorded; rollback is unavailable."
+                            error(
+                                'No previous image was recorded; automatic rollback is unavailable.'
+                            )
                         }
 
-                        // Keep the Jenkins build failed even if rollback succeeds.
+                        // The build remains failed even if rollback succeeds.
                         throw err
+
                     } finally {
                         sh 'docker rm -f onespace-next 2>/dev/null || true'
                     }
@@ -181,3 +200,4 @@ pipeline {
         }
     }
 }
+```
