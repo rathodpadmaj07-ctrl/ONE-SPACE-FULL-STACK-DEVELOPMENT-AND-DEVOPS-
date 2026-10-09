@@ -124,7 +124,7 @@ pipeline {
                             sleep 5
 
                             # TEST ONLY: deliberately fail after replacement.
-                            if [ "${SIMULATE_DEPLOY_FAILURE}" = "true" ]; then
+                            if [ "${SIMULATE_DEPLOY_FAILURE:-false}" = "true" ]; then
                                 echo "Simulating deployment failure for rollback test."
                                 exit 1
                             fi
