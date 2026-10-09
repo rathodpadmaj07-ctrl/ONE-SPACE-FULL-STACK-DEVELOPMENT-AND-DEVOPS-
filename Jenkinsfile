@@ -2,14 +2,6 @@
 pipeline {
     agent any
 
-    parameters {
-        booleanParam(
-            name: 'SIMULATE_DEPLOY_FAILURE',
-            defaultValue: false,
-            description: 'Test automatic rollback by forcing deployment verification to fail'
-        )
-    }
-
     environment {
         PATH = "/opt/homebrew/bin:${env.PATH}"
     }
@@ -109,7 +101,7 @@ pipeline {
                                 http://127.0.0.1:5003/index.html
                         '''
 
-                        // Replace the production container.
+                        // Deploy the new image.
                         sh '''
                             set -eu
 
@@ -123,12 +115,6 @@ pipeline {
 
                             sleep 5
 
-                            # TEST ONLY: deliberately fail after replacement.
-                            if [ "${SIMULATE_DEPLOY_FAILURE:-false}" = "true" ]; then
-                                echo "Simulating deployment failure for rollback test."
-                                exit 1
-                            fi
-
                             curl --fail --silent --show-error \
                                 http://127.0.0.1:5001/api/health
 
@@ -141,7 +127,7 @@ pipeline {
                     } catch (err) {
                         echo "Deployment failed. Attempting automatic rollback."
 
-                        // Remove failed production and candidate containers.
+                        // Remove the failed deployment and candidate.
                         sh '''
                             docker rm -f onespace-next onespace-app \
                                 2>/dev/null || true
@@ -180,7 +166,7 @@ pipeline {
                             )
                         }
 
-                        // The build remains failed even if rollback succeeds.
+                        // Keep the build failed even if rollback succeeds.
                         throw err
 
                     } finally {
